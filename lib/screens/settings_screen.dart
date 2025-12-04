@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../services/settings_service.dart';
 import '../services/config_service.dart';
 
@@ -14,6 +16,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _themeMode = 'light';
   String _backendUrl = '';
   bool _isLoading = true;
+  bool _isTestingConnection = false;
+  String? _connectionTestResult;
   final TextEditingController _urlController = TextEditingController();
 
   @override
@@ -89,6 +93,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _testConnection() async {
+    setState(() {
+      _isTestingConnection = true;
+      _connectionTestResult = null;
+    });
+
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final healthUrl = '$baseUrl/health';
+      
+      print('🔍 Testing connection to: $healthUrl');
+      
+      final response = await http
+          .get(Uri.parse(healthUrl))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final dbStatus = data['database'] ?? 'unknown';
+        final dbName = data['databaseName'] ?? 'unknown';
+        final backendInfo = data['backend'] ?? {};
+        
+        setState(() {
+          _connectionTestResult = '✅ Connection Successful!\n\n'
+              'Backend: ${backendInfo['baseUrl'] ?? baseUrl}\n'
+              'Database: $dbStatus\n'
+              'Database Name: $dbName\n'
+              'Status: ${data['status'] ?? 'ok'}';
+        });
+      } else {
+        setState(() {
+          _connectionTestResult = '❌ Connection Failed\n\n'
+              'Status Code: ${response.statusCode}\n'
+              'Backend responded but with an error.';
+        });
+      }
+    } catch (e) {
+      final baseUrl = await ConfigService.getBaseUrl();
+      String errorMsg = '❌ Connection Failed\n\n';
+      
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timeout')) {
+        errorMsg += 'Connection timeout.\n\n'
+            'Unable to reach backend at:\n$baseUrl\n\n'
+            'Please check:\n'
+            '1. Backend server is running\n'
+            '2. Device is on the same network\n'
+            '3. Firewall is not blocking the connection';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Failed host lookup')) {
+        errorMsg += 'Cannot resolve host.\n\n'
+            'Unable to reach:\n$baseUrl\n\n'
+            'Please check:\n'
+            '1. Backend server is running\n'
+            '2. IP address is correct\n'
+            '3. Device is on the same network';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg += 'Connection refused.\n\n'
+            'Backend at $baseUrl is not accepting connections.\n\n'
+            'Please check:\n'
+            '1. Backend server is running\n'
+            '2. Port 3001 is not blocked';
+      } else {
+        errorMsg += 'Error: ${e.toString()}';
+      }
+      
+      setState(() {
+        _connectionTestResult = errorMsg;
+      });
+    } finally {
+      setState(() {
+        _isTestingConnection = false;
+      });
     }
   }
 
@@ -263,6 +341,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _backendUrl = value;
                       });
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  // Connection Test Result
+                  if (_connectionTestResult != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: _connectionTestResult!.contains('✅') 
+                            ? Colors.green[50] 
+                            : Colors.red[50],
+                        border: Border.all(
+                          color: _connectionTestResult!.contains('✅') 
+                              ? Colors.green 
+                              : Colors.red,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _connectionTestResult!,
+                        style: TextStyle(
+                          color: _connectionTestResult!.contains('✅') 
+                              ? Colors.green[900] 
+                              : Colors.red[900],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _isTestingConnection ? null : _testConnection,
+                        icon: _isTestingConnection 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.wifi_find, size: 18),
+                        label: Text(_isTestingConnection ? 'Testing...' : 'Test Connection'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[700],
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Row(

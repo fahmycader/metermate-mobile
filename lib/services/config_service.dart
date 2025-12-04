@@ -61,11 +61,13 @@ class ConfigService {
     final wifiUrl = _config?[_environment]?['backend']?['baseUrl'] ?? 'http://192.168.1.99:3001';
     final mobileDataUrl = _config?[_environment]?['backend']?['mobileDataUrl'] ?? wifiUrl;
 
-    // Use mobile data URL if on mobile data, otherwise use WiFi URL
+    // For mobile app, always use IP address (not localhost)
+    // Use mobile data URL if on mobile data, otherwise use WiFi URL (which should be IP address)
     if (isMobileData && !isWifi) {
       return mobileDataUrl;
     }
     
+    // Always use IP address for mobile devices (not localhost)
     return wifiUrl;
   }
 

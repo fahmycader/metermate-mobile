@@ -8,7 +8,7 @@
       "note": "For mobile data, configure your public IP or domain. You can also set a custom URL in app settings."
     },
     "database": {
-      "mongodb": "mongodb://localhost:27017/metermate"
+      "mongodb": "mongodb+srv://mail2fahmy:0eFaerZ68FMAgkO2@cluster0.gkwxq63.mongodb.net/metermate?retryWrites=true&w=majority&appName=Cluster0"
     },
     "jwt": {
       "secret": "fce832cd907fc4f134f1cd1b8d34d54096cd27fb4978ccb0c6f2e73fcf90dd2466fdf727f9270d5ee4dadaab4b032e683ec2297d127e0e16bde5757ae4963f3a"
@@ -17,7 +17,7 @@
   "production": {
     "backend": {
       "ip": "your-production-ip",
-      "port": 3001,
+      "port": 3000,
       "baseUrl": "https://your-production-domain.com"
     },
     "database": {
@@ -30,7 +30,7 @@
   "staging": {
     "backend": {
       "ip": "your-staging-ip",
-      "port": 3001,
+      "port": 3000,
       "baseUrl": "https://your-staging-domain.com"
     },
     "database": {

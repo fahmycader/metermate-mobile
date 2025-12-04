@@ -4,16 +4,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'config_service.dart';
 
 class AuthService {
-  static String get _baseUrl => ConfigService.authUrl; 
-
-  // For physical device, replace 10.0.2.2 with your computer's IP address
+  // For physical device, use IP address instead of localhost
 
   Future<Map<String, dynamic>> login(String username, String password) async {
     try {
-      final baseUrl = await _baseUrl;
-      print('🔗 Attempting to connect to: $baseUrl/login');
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
+      print('🔗 Attempting to connect to: $authUrl/login');
       final response = await http.post(
-        Uri.parse('$baseUrl/login'),
+        Uri.parse('$authUrl/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'username': username, 'password': password}),
       ).timeout(const Duration(seconds: 10));
@@ -30,9 +29,10 @@ class AuthService {
         return {'success': false, 'message': responseData['message'] ?? 'Login failed'};
       }
     } catch (e) {
-      final baseUrl = await _baseUrl;
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
       print('❌ Login Error: $e');
-      print('❌ Failed URL: $baseUrl/login');
+      print('❌ Failed URL: $authUrl/login');
       print('❌ Error type: ${e.runtimeType}');
       String errorMessage = 'Could not connect to the server.';
       final currentBaseUrl = await ConfigService.getBaseUrl();
@@ -60,9 +60,10 @@ class AuthService {
     String? department,
   }) async {
     try {
-      final baseUrl = await _baseUrl;
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
       final response = await http.post(
-        Uri.parse('$baseUrl/register'),
+        Uri.parse('$authUrl/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'username': username, 
@@ -165,9 +166,10 @@ class AuthService {
         return {'success': false, 'message': 'No token found'};
       }
 
-      final baseUrl = await _baseUrl;
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
       final response = await http.get(
-        Uri.parse('$baseUrl/profile'),
+        Uri.parse('$authUrl/profile'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
