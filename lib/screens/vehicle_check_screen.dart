@@ -125,7 +125,7 @@ class _VehicleCheckScreenState extends State<VehicleCheckScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _getFieldValue(field),
+              initialValue: _getFieldValue(field),
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/meter_reading_service.dart';
@@ -10,7 +9,6 @@ import '../services/location_service.dart';
 import '../services/camera_service.dart';
 import '../services/location_validation_service.dart';
 import '../services/sync_service.dart';
-import '../services/connectivity_service.dart';
 import '../services/offline_storage_service.dart';
 import '../widgets/location_input_dialog.dart';
 
@@ -1045,22 +1043,34 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       List<String> photoUrls = [];
       List<String> photoPaths = [];
       
+      print('📸 Photo upload check: _photos=${_photos.keys.toList()}, hasMeterPhoto=${_photos['meter'] != null}');
+      
       if (_photos['meter'] != null) {
+        print('📸 Photo found, isOnline=$isOnline');
         if (isOnline) {
           // Upload photo immediately if online
+          print('📤 Uploading photo to server...');
           String? url = await _cameraService.uploadPhoto(
             _photos['meter']!,
             widget.job['_id'],
             'meter',
           );
-          if (url != null) {
+          if (url != null && url.isNotEmpty) {
             photoUrls.add(url);
+            print('✅ Photo URL added to list: $url');
+          } else {
+            print('❌ Photo upload failed or returned null URL');
           }
         } else {
           // Save photo path for offline sync
           photoPaths.add(_photos['meter']!.path);
+          print('💾 Saved photo path for offline sync: ${_photos['meter']!.path}');
         }
+      } else {
+        print('⚠️ No photo taken for this job');
       }
+      
+      print('📊 Final photo URLs count: ${photoUrls.length}, paths count: ${photoPaths.length}');
 
       // Prepare meter reading data
       Map<String, dynamic> readingData = {
