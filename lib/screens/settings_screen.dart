@@ -427,7 +427,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               
                               // If IP address and no port specified, add :3001
                               if (isIpAddress && uri.port == 0 && !url.contains(':')) {
-                                url = url.replaceFirst(RegExp(r'/$'), '') + ':3001';
+                                url = '${url.replaceFirst(RegExp(r'/$'), '')}:3001';
                                 _urlController.text = url;
                               }
                             }
