@@ -16,16 +16,104 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _employeeIdController = TextEditingController();
+  final _verificationCodeController = TextEditingController();
   String _selectedDepartment = 'meter';
   final _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _emailVerified = false;
+  bool _verificationCodeSent = false;
+  bool _sendingCode = false;
+
+  void _handleSendVerificationCode() async {
+    if (_emailController.text.isEmpty || !_emailController.text.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sendingCode = true);
+    final result = await _authService.sendVerificationCode(_emailController.text);
+    setState(() => _sendingCode = false);
+
+    if (mounted) {
+      if (result['success']) {
+        setState(() => _verificationCodeSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Verification code sent to your email'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _handleVerifyCode() async {
+    if (_verificationCodeController.text.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter the 6-digit verification code'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final result = await _authService.verifyCode(
+      _emailController.text,
+      _verificationCodeController.text,
+      type: 'registration',
+    );
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      if (result['success']) {
+        setState(() => _emailVerified = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email verified successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   void _handleSignup() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Username and password are required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (!_emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please verify your email address first'),
           backgroundColor: Colors.red,
         ),
       );
@@ -42,6 +130,7 @@ class _SignupScreenState extends State<SignupScreen> {
       phone: _phoneController.text,
       employeeId: _employeeIdController.text,
       department: _selectedDepartment,
+      verificationCode: _verificationCodeController.text,
     );
     setState(() => _isLoading = false);
 
@@ -53,7 +142,6 @@ class _SignupScreenState extends State<SignupScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Navigate to vehicle check screen first, then home
         Navigator.of(context).pushReplacementNamed('/vehicle-check');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -171,12 +259,94 @@ class _SignupScreenState extends State<SignupScreen> {
                     TextFormField(
                       controller: _emailController,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
+                        labelText: 'Email *',
                         prefixIcon: Icon(Icons.email_outlined),
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.emailAddress,
+                      onChanged: (value) {
+                        setState(() {
+                          _emailVerified = false;
+                          _verificationCodeSent = false;
+                        });
+                      },
                     ),
+                    if (_emailController.text.isNotEmpty &&
+                        _emailController.text.contains('@') &&
+                        !_emailVerified) ...[
+                      const SizedBox(height: 8.0),
+                      if (!_verificationCodeSent)
+                        ElevatedButton(
+                          onPressed: _sendingCode ? null : _handleSendVerificationCode,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                          ),
+                          child: _sendingCode
+                              ? const SizedBox(
+                                  height: 20.0,
+                                  width: 20.0,
+                                  child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                                )
+                              : const Text('Send Verification Code'),
+                        )
+                      else ...[
+                        TextFormField(
+                          controller: _verificationCodeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Verification Code',
+                            prefixIcon: Icon(Icons.lock_outline),
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter 6-digit code',
+                          ),
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                        ),
+                        const SizedBox(height: 8.0),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isLoading || _verificationCodeController.text.length != 6
+                                    ? null
+                                    : _handleVerifyCode,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 20.0,
+                                        width: 20.0,
+                                        child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                                      )
+                                    : const Text('Verify Code'),
+                              ),
+                            ),
+                            const SizedBox(width: 8.0),
+                            ElevatedButton(
+                              onPressed: _sendingCode ? null : _handleSendVerificationCode,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey[300],
+                              ),
+                              child: const Text('Resend'),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_emailVerified)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green, size: 20.0),
+                              const SizedBox(width: 8.0),
+                              Text(
+                                'Email verified',
+                                style: TextStyle(color: Colors.green),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 16.0),
                     TextFormField(
                       controller: _phoneController,
@@ -198,7 +368,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     const SizedBox(height: 16.0),
                     DropdownButtonFormField<String>(
-                      initialValue: _selectedDepartment,
+                      value: _selectedDepartment,
                       decoration: const InputDecoration(
                         labelText: 'Department',
                         prefixIcon: Icon(Icons.business_outlined),
@@ -226,13 +396,11 @@ class _SignupScreenState extends State<SignupScreen> {
                     _isLoading
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton(
-                            onPressed: _handleSignup,
+                            onPressed: _emailVerified ? _handleSignup : null,
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16.0),
                               backgroundColor: Colors.blue[700],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
+                              disabledBackgroundColor: Colors.grey,
                             ),
                             child: const Text(
                               'Sign Up',
@@ -256,4 +424,4 @@ class _SignupScreenState extends State<SignupScreen> {
       ),
     );
   }
-} 
+}

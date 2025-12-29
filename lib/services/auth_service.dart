@@ -58,6 +58,7 @@ class AuthService {
     String? phone,
     String? employeeId,
     String? department,
+    String? verificationCode,
   }) async {
     try {
       final baseUrl = await ConfigService.getBaseUrl();
@@ -74,6 +75,7 @@ class AuthService {
           'phone': phone ?? '',
           'employeeId': employeeId ?? '',
           'department': department ?? '',
+          'verificationCode': verificationCode ?? '',
         }),
       );
       
@@ -90,6 +92,98 @@ class AuthService {
       }
     } catch (e) {
       print('Register Error: $e');
+      return {'success': false, 'message': 'Could not connect to the server.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> sendVerificationCode(String email, {String type = 'registration'}) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
+      final response = await http.post(
+        Uri.parse('$authUrl/send-verification-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'type': type}),
+      );
+      
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': responseData};
+      } else {
+        return {'success': false, 'message': responseData['message'] ?? 'Failed to send verification code'};
+      }
+    } catch (e) {
+      print('Send Verification Code Error: $e');
+      return {'success': false, 'message': 'Could not connect to the server.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyCode(String email, String code, {String type = 'registration'}) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
+      final response = await http.post(
+        Uri.parse('$authUrl/verify-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'code': code, 'type': type}),
+      );
+      
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': responseData};
+      } else {
+        return {'success': false, 'message': responseData['message'] ?? 'Verification failed'};
+      }
+    } catch (e) {
+      print('Verify Code Error: $e');
+      return {'success': false, 'message': 'Could not connect to the server.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
+      final response = await http.post(
+        Uri.parse('$authUrl/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': responseData};
+      } else {
+        return {'success': false, 'message': responseData['message'] ?? 'Failed to send password reset code'};
+      }
+    } catch (e) {
+      print('Forgot Password Error: $e');
+      return {'success': false, 'message': 'Could not connect to the server.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final authUrl = '$baseUrl/api/auth';
+      final response = await http.post(
+        Uri.parse('$authUrl/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'code': code,
+          'newPassword': newPassword,
+        }),
+      );
+      
+      final responseData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': responseData};
+      } else {
+        return {'success': false, 'message': responseData['message'] ?? 'Password reset failed'};
+      }
+    } catch (e) {
+      print('Reset Password Error: $e');
       return {'success': false, 'message': 'Could not connect to the server.'};
     }
   }
