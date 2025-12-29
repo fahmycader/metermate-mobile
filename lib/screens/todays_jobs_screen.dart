@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,9 @@ import '../services/job_service.dart';
 import '../services/location_service.dart';
 import '../services/camera_service.dart';
 import '../services/location_validation_service.dart';
+import '../services/settings_service.dart';
+import '../services/break_service.dart';
+import '../services/vehicle_check_service.dart';
 
 class TodaysJobsScreen extends StatefulWidget {
   const TodaysJobsScreen({super.key});
@@ -15,26 +19,69 @@ class TodaysJobsScreen extends StatefulWidget {
   State<TodaysJobsScreen> createState() => _TodaysJobsScreenState();
 }
 
-class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
+class _TodaysJobsScreenState extends State<TodaysJobsScreen> with WidgetsBindingObserver {
   final JobService _jobService = JobService();
   final LocationService _locationService = LocationService();
   final CameraService _cameraService = CameraService();
+  final VehicleCheckService _vehicleCheckService = VehicleCheckService();
   List<dynamic> _jobs = [];
   Map<String, dynamic>? _jobCounts;
   bool _isLoading = true;
   String _selectedFilter = 'all';
   final Map<String, bool> _trackingJobs = {}; // Track which jobs are being tracked
+  bool _isOnBreak = false;
+  int _breakRemainingSeconds = 0;
+  Timer? _breakTimer;
+  Offset _breakButtonPosition = const Offset(20, 20); // For draggable break button
+  bool _breakAlreadyTaken = false; // Track if break has been taken today
+  DateTime? _lastConnectionErrorShown; // Track when we last showed a connection error
 
   @override
   void initState() {
     super.initState();
-    _loadTodaysJobs();
+    WidgetsBinding.instance.addObserver(this);
+    _loadTodaysJobs(silent: true); // Initial load - silent to avoid showing errors on startup
     _startAutoRefresh();
+    _loadBreakState(); // Load break state from storage
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // When app resumes, reload break state to ensure timer is accurate
+    if (state == AppLifecycleState.resumed) {
+      _loadBreakState();
+    }
+  }
+
+  Future<void> _loadBreakState() async {
+    final isOnBreak = await BreakService.isOnBreak();
+    final breakTaken = await BreakService.hasBreakBeenTakenToday();
+    
+    if (isOnBreak) {
+      final remaining = await BreakService.getRemainingSeconds();
+      setState(() {
+        _isOnBreak = true;
+        _breakRemainingSeconds = remaining;
+        _breakAlreadyTaken = false; // Still on break, not yet marked as taken
+      });
+      _startBreakTimer(); // Resume timer
+    } else {
+      // Make sure break state is cleared if break has ended
+      setState(() {
+        _isOnBreak = false;
+        _breakRemainingSeconds = 0;
+        _breakAlreadyTaken = breakTaken; // Check if break was already taken today
+      });
+      _breakTimer?.cancel();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopAutoRefresh();
+    _breakTimer?.cancel();
     super.dispose();
   }
 
@@ -42,7 +89,7 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
     // Auto-refresh every 30 seconds
     Future.delayed(const Duration(seconds: 30), () {
       if (mounted) {
-        _loadTodaysJobs();
+        _loadTodaysJobs(silent: true); // Silent refresh - don't show errors
         _startAutoRefresh(); // Schedule next refresh
       }
     });
@@ -52,7 +99,7 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
     // This will be called when the widget is disposed
   }
 
-  Future<void> _loadTodaysJobs() async {
+  Future<void> _loadTodaysJobs({bool silent = false}) async {
     setState(() => _isLoading = true);
     
     // Get current location for geographical sorting
@@ -130,13 +177,31 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
       });
     } else {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.red,
-          ),
-        );
+      
+      // Only show error if not silent and we haven't shown an error recently (within 60 seconds)
+      if (!silent && mounted) {
+        final now = DateTime.now();
+        final shouldShowError = _lastConnectionErrorShown == null || 
+            now.difference(_lastConnectionErrorShown!).inSeconds > 60;
+        
+        if (shouldShowError && result['message']?.contains('Could not connect') == true) {
+          _lastConnectionErrorShown = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message']),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else if (!result['message']?.contains('Could not connect') == true) {
+          // Show non-connection errors immediately
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message']),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -234,12 +299,27 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
         backgroundColor: Colors.blue[700],
         foregroundColor: Colors.white,
         actions: [
+          // SOS Button - Emergency call button
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.phone, color: Colors.white, size: 24),
+              onPressed: _callEmergency,
+              tooltip: 'Emergency SOS - Call 999',
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTodaysJobs,
+            tooltip: 'Refresh Jobs',
           ),
         ],
       ),
+      floatingActionButton: null, // We'll use a draggable button instead
       body: Column(
         children: [
           // Header with date and counts
@@ -293,41 +373,103 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
           
           // Jobs list
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredJobs.isEmpty
-                    ? RefreshIndicator(
-                        onRefresh: _loadTodaysJobs,
-                        child: const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.work_outline, size: 64, color: Colors.grey),
-                              SizedBox(height: 16),
-                              Text(
-                                'No jobs for today',
-                                style: TextStyle(fontSize: 18, color: Colors.grey),
+            child: Stack(
+              children: [
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filteredJobs.isEmpty
+                        ? RefreshIndicator(
+                            onRefresh: _loadTodaysJobs,
+                            child: const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.work_outline, size: 64, color: Colors.grey),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'No jobs for today',
+                                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Pull down to refresh',
+                                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                                  ),
+                                ],
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Pull down to refresh',
-                                style: TextStyle(fontSize: 14, color: Colors.grey),
-                              ),
-                            ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadTodaysJobs,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _filteredJobs.length,
+                              itemBuilder: (context, index) {
+                                final job = _filteredJobs[index];
+                                return _buildJobCard(job);
+                              },
+                            ),
                           ),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadTodaysJobs,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _filteredJobs.length,
-                          itemBuilder: (context, index) {
-                            final job = _filteredJobs[index];
-                            return _buildJobCard(job);
-                          },
-                        ),
-                      ),
+                // Draggable break button
+                Positioned(
+                  bottom: _breakButtonPosition.dy,
+                  right: _breakButtonPosition.dx,
+                  child: GestureDetector(
+                    onPanUpdate: (details) {
+                      setState(() {
+                        _breakButtonPosition += details.delta;
+                        // Keep button within screen bounds
+                        final screenSize = MediaQuery.of(context).size;
+                        final buttonWidth = 180.0;
+                        final buttonHeight = 56.0;
+                        
+                        if (_breakButtonPosition.dx < 0) {
+                          _breakButtonPosition = Offset(0, _breakButtonPosition.dy);
+                        }
+                        if (_breakButtonPosition.dx > screenSize.width - buttonWidth) {
+                          _breakButtonPosition = Offset(screenSize.width - buttonWidth, _breakButtonPosition.dy);
+                        }
+                        if (_breakButtonPosition.dy < 0) {
+                          _breakButtonPosition = Offset(_breakButtonPosition.dx, 0);
+                        }
+                        if (_breakButtonPosition.dy > screenSize.height - buttonHeight - 20) {
+                          _breakButtonPosition = Offset(_breakButtonPosition.dx, screenSize.height - buttonHeight - 20);
+                        }
+                      });
+                    },
+                    child: _isOnBreak
+                        ? FloatingActionButton.extended(
+                            onPressed: null,
+                            backgroundColor: Colors.orange,
+                            icon: const Icon(Icons.timer, color: Colors.white),
+                            label: Text(
+                              _formatBreakTime(_breakRemainingSeconds),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : FloatingActionButton.extended(
+                            onPressed: _breakAlreadyTaken ? null : _startBreak,
+                            backgroundColor: _breakAlreadyTaken ? Colors.grey : Colors.blue[700],
+                            icon: Icon(
+                              Icons.coffee,
+                              color: _breakAlreadyTaken ? Colors.grey[400] : Colors.white,
+                            ),
+                            label: Text(
+                              '30 Min Break',
+                              style: TextStyle(
+                                color: _breakAlreadyTaken ? Colors.grey[400] : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -595,11 +737,30 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
               children: [
                 const FaIcon(FontAwesomeIcons.clock, size: 16, color: Colors.grey),
                 const SizedBox(width: 8),
-                Text(
-                  'Scheduled: ${scheduledDate.hour.toString().padLeft(2, '0')}:${scheduledDate.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        scheduledDate.hour == 0 && scheduledDate.minute == 0
+                            ? 'Scheduled: ${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year} (All Day)'
+                            : 'Scheduled: ${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year} at ${scheduledDate.hour.toString().padLeft(2, '0')}:${scheduledDate.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      if (job['createdAt'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Created: ${_formatDate(job['createdAt'])}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (job['distanceFromUser'] != null) ...[
@@ -641,29 +802,39 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
                 if (status == 'pending') ...[
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: canAccess 
-                          ? () => _startJobWithLocation(job)
-                          : () {
-                              // Show message explaining why job cannot be started
-                              final nextJob = _getNextAvailableJob();
-                              final nextSeq = nextJob?['sequenceNumber'];
-                              final currentSeq = job['sequenceNumber'];
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    nextSeq != null && currentSeq != null
-                                        ? 'Please complete job #$nextSeq first before starting job #$currentSeq'
-                                        : 'Please complete the previous job in sequence first',
+                      onPressed: (_isOnBreak || !canAccess)
+                          ? () {
+                              if (_isOnBreak) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('You are on break. Please wait until break ends to start jobs.'),
+                                    backgroundColor: Colors.orange,
+                                    duration: Duration(seconds: 3),
                                   ),
-                                  backgroundColor: Colors.orange,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            },
+                                );
+                              } else {
+                                // Show message explaining why job cannot be started
+                                final nextJob = _getNextAvailableJob();
+                                final nextSeq = nextJob?['sequenceNumber'];
+                                final currentSeq = job['sequenceNumber'];
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      nextSeq != null && currentSeq != null
+                                          ? 'Please complete job #$nextSeq first before starting job #$currentSeq'
+                                          : 'Please complete the previous job in sequence first',
+                                    ),
+                                    backgroundColor: Colors.orange,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            }
+                          : () => _startJobWithLocation(job),
                       icon: const FaIcon(FontAwesomeIcons.play, size: 16),
                       label: const Text('Start Work'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: canAccess ? Colors.blue[700] : Colors.grey[400],
+                        backgroundColor: (_isOnBreak || !canAccess) ? Colors.grey[400] : Colors.blue[700],
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -672,29 +843,39 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
                 if (status == 'in_progress') ...[
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: canAccess
-                          ? () => _navigateToMeterReading(job)
-                          : () {
-                              // Show message explaining why job cannot be accessed
-                              final nextJob = _getNextAvailableJob();
-                              final nextSeq = nextJob?['sequenceNumber'];
-                              final currentSeq = job['sequenceNumber'];
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    nextSeq != null && currentSeq != null
-                                        ? 'Please complete job #$nextSeq first before continuing job #$currentSeq'
-                                        : 'Please complete the previous job in sequence first',
+                      onPressed: (_isOnBreak || !canAccess)
+                          ? () {
+                              if (_isOnBreak) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('You are on break. Please wait until break ends to complete jobs.'),
+                                    backgroundColor: Colors.orange,
+                                    duration: Duration(seconds: 3),
                                   ),
-                                  backgroundColor: Colors.orange,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            },
+                                );
+                              } else {
+                                // Show message explaining why job cannot be accessed
+                                final nextJob = _getNextAvailableJob();
+                                final nextSeq = nextJob?['sequenceNumber'];
+                                final currentSeq = job['sequenceNumber'];
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      nextSeq != null && currentSeq != null
+                                          ? 'Please complete job #$nextSeq first before continuing job #$currentSeq'
+                                          : 'Please complete the previous job in sequence first',
+                                    ),
+                                    backgroundColor: Colors.orange,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            }
+                          : () => _navigateToMeterReading(job),
                       icon: const FaIcon(FontAwesomeIcons.clipboardCheck, size: 16),
                       label: const Text('Take Reading'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: canAccess ? Colors.orange[700] : Colors.grey[400],
+                        backgroundColor: (_isOnBreak || !canAccess) ? Colors.grey[400] : Colors.orange[700],
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -771,10 +952,11 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
     );
   }
 
-  void _showMapDialog(Map<String, dynamic> address) {
+  void _showMapDialog(Map<String, dynamic> address) async {
+    final mapPreference = await SettingsService.getMapPreference();
     showDialog(
       context: context,
-      builder: (context) => MapDialog(address: address),
+      builder: (context) => MapDialog(address: address, mapPreference: mapPreference),
     );
   }
 
@@ -956,6 +1138,217 @@ class _TodaysJobsScreenState extends State<TodaysJobsScreen> {
         },
       ),
     );
+  }
+
+  void _startBreak() async {
+    // Check if break has already been taken today
+    final breakTaken = await BreakService.hasBreakBeenTakenToday();
+    if (breakTaken) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No break available at this moment'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Check if 3 hours have passed since shift start
+    final vehicleCheckResult = await _vehicleCheckService.getTodaysVehicleCheck();
+    
+    if (!vehicleCheckResult['success'] || vehicleCheckResult['data'] == null) {
+      // No vehicle check found for today
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No break available at this moment'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final vehicleCheck = vehicleCheckResult['data'];
+    final shiftStartTimeStr = vehicleCheck['shiftStartTime'];
+    
+    if (shiftStartTimeStr == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No break available at this moment'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Parse shift start time
+    final shiftStartTime = DateTime.parse(shiftStartTimeStr);
+    final now = DateTime.now();
+    final hoursSinceStart = now.difference(shiftStartTime).inHours;
+    
+    // Check if 3 hours have passed
+    if (hoursSinceStart < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No break available at this moment'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Show confirmation dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start Break'),
+        content: const Text('Start your 30-minute break?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              // Save break start time to persistent storage and mark as taken
+              await BreakService.startBreak();
+              await BreakService.markBreakTaken();
+              setState(() {
+                _isOnBreak = true;
+                _breakRemainingSeconds = 30 * 60; // 30 minutes in seconds
+                _breakAlreadyTaken = true;
+              });
+              _startBreakTimer();
+            },
+            child: const Text('Start Break'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startBreakTimer() {
+    _breakTimer?.cancel(); // Cancel any existing timer
+    
+    _breakTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        // Recalculate remaining time from stored start time
+        BreakService.getRemainingSeconds().then((remaining) {
+          BreakService.isOnBreak().then((isStillOnBreak) {
+            if (mounted) {
+              setState(() {
+                if (isStillOnBreak && remaining > 0) {
+                  _breakRemainingSeconds = remaining;
+                  _isOnBreak = true;
+                } else {
+                  _breakRemainingSeconds = 0;
+                  _isOnBreak = false;
+                  _breakAlreadyTaken = true; // Mark as taken when break ends
+                  timer.cancel();
+                  BreakService.clearBreak();
+                  _showBreakEndDialog();
+                }
+              });
+            }
+          });
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  String _formatBreakTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  void _showBreakEndDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Break Ended'),
+        content: const Text('Your 30-minute break has ended. Please return to work.'),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Return to Work'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _callEmergency() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Emergency SOS'),
+        content: const Text(
+          'Are you sure you want to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Call Emergency'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Call UK emergency services (999)
+        final phoneNumber = 'tel:999';
+        final uri = Uri.parse(phoneNumber);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+          // Allow user to navigate back to app after calling
+          // Job completion will still be blocked if on break
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to make emergency call. Please dial 999 manually.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error calling emergency: $e. Please dial 999 manually.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 }
 
@@ -1300,10 +1693,11 @@ class _MeterReadingDialogState extends State<MeterReadingDialog> {
 
 class MapDialog extends StatelessWidget {
   final Map<String, dynamic> address;
+  final String mapPreference;
 
-  const MapDialog({super.key, required this.address});
+  const MapDialog({super.key, required this.address, this.mapPreference = 'google'});
 
-  Future<void> _openGoogleMaps(BuildContext context) async {
+  Future<void> _openMaps(BuildContext context) async {
     try {
       // Create the address string
       final addressString = '${address['street']}, ${address['city']}, ${address['state']} ${address['zipCode']}';
@@ -1312,35 +1706,37 @@ class MapDialog extends StatelessWidget {
       final encodedAddress = Uri.encodeComponent(addressString);
       
       print('🔍 Debug: Trying to open maps for address: $addressString');
-      print('🔍 Debug: Encoded address: $encodedAddress');
+      print('🔍 Debug: Map preference: $mapPreference');
       
-      // Try multiple URL schemes in order of preference
-      final List<Map<String, String>> urlsToTry = [
-        {
-          'name': 'Google Maps Web',
-          'url': 'https://www.google.com/maps/search/?api=1&query=$encodedAddress'
-        },
-        {
-          'name': 'Google Maps Alternative',
-          'url': 'https://maps.google.com/maps?q=$encodedAddress'
-        },
-        {
-          'name': 'Geo URL',
-          'url': 'geo:0,0?q=$encodedAddress'
-        },
-        {
-          'name': 'Maps URL',
-          'url': 'maps:0,0?q=$encodedAddress'
-        },
-        {
-          'name': 'Google Maps App',
-          'url': 'comgooglemaps://?q=$encodedAddress'
-        },
-        {
-          'name': 'Apple Maps',
-          'url': 'http://maps.apple.com/?q=$encodedAddress'
-        },
-      ];
+      // Build URLs based on preference
+      final List<Map<String, String>> urlsToTry = [];
+      
+      if (mapPreference == 'waze') {
+        // Waze URLs
+        urlsToTry.addAll([
+          {'name': 'Waze App', 'url': 'waze://?q=$encodedAddress'},
+          {'name': 'Waze Web', 'url': 'https://waze.com/ul?q=$encodedAddress'},
+        ]);
+      } else if (mapPreference == 'osm') {
+        // OpenStreetMap URLs
+        urlsToTry.addAll([
+          {'name': 'OSM Web', 'url': 'https://www.openstreetmap.org/search?query=$encodedAddress'},
+          {'name': 'OSM Mobile', 'url': 'geo:0,0?q=$encodedAddress'},
+        ]);
+      } else {
+        // Google Maps (default)
+        urlsToTry.addAll([
+          {'name': 'Google Maps App', 'url': 'comgooglemaps://?q=$encodedAddress'},
+          {'name': 'Google Maps Web', 'url': 'https://www.google.com/maps/search/?api=1&query=$encodedAddress'},
+          {'name': 'Google Maps Alternative', 'url': 'https://maps.google.com/maps?q=$encodedAddress'},
+        ]);
+      }
+      
+      // Fallback options
+      urlsToTry.addAll([
+        {'name': 'Geo URL', 'url': 'geo:0,0?q=$encodedAddress'},
+        {'name': 'Apple Maps', 'url': 'http://maps.apple.com/?q=$encodedAddress'},
+      ]);
       
       bool launched = false;
       String lastError = '';
@@ -1434,7 +1830,7 @@ class MapDialog extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Open in Google Maps',
+                    'Open in ${mapPreference == 'waze' ? 'Waze' : mapPreference == 'osm' ? 'OpenStreetMap' : 'Google Maps'}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -1443,7 +1839,7 @@ class MapDialog extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Tap the button below to open the location in your default maps app',
+                    'Tap the button below to open the location in your preferred maps app',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.blue[600],
@@ -1462,9 +1858,9 @@ class MapDialog extends StatelessWidget {
           child: const Text('Cancel'),
         ),
         ElevatedButton.icon(
-          onPressed: () => _openGoogleMaps(context),
+          onPressed: () => _openMaps(context),
           icon: const Icon(Icons.open_in_new),
-          label: const Text('Open Maps'),
+          label: Text('Open ${mapPreference == 'waze' ? 'Waze' : mapPreference == 'osm' ? 'OSM' : 'Maps'}'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blue[700],
             foregroundColor: Colors.white,

@@ -85,5 +85,31 @@ class VehicleCheckService {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
+
+  Future<Map<String, dynamic>> getTodaysVehicleCheck() async {
+    try {
+      String? token = await _getToken();
+      if (token == null) {
+        return {'success': false, 'message': 'No token found'};
+      }
+
+      final response = await http.get(
+        Uri.parse('${await _baseUrl}/today'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Failed to get today\'s vehicle check'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
 }
 

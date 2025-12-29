@@ -14,6 +14,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   double _fontSize = 14.0;
   String _themeMode = 'light';
+  String _mapPreference = 'google';
   String _backendUrl = '';
   bool _isLoading = true;
   bool _isTestingConnection = false;
@@ -29,10 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final fontSize = await SettingsService.getFontSize();
     final themeMode = await SettingsService.getThemeMode();
+    final mapPreference = await SettingsService.getMapPreference();
     final currentUrl = await ConfigService.getBaseUrl();
     setState(() {
       _fontSize = fontSize;
       _themeMode = themeMode;
+      _mapPreference = mapPreference;
       _backendUrl = currentUrl;
       _urlController.text = currentUrl;
       _isLoading = false;
@@ -56,6 +59,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Theme changed. Restart app to see changes.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveMapPreference(String value) async {
+    setState(() {
+      _mapPreference = value;
+    });
+    await SettingsService.setMapPreference(value);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Map preference saved'),
+          backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );
@@ -282,6 +301,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: 'system',
                     groupValue: _themeMode,
                     onChanged: (value) => _saveThemeMode(value!),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Map Preference Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.map, color: Colors.blue[700]),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Preferred Map for Navigation',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  RadioListTile<String>(
+                    title: const Text('Google Maps'),
+                    subtitle: const Text('Default Google Maps navigation'),
+                    value: 'google',
+                    groupValue: _mapPreference,
+                    onChanged: (value) => _saveMapPreference(value!),
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('OpenStreetMap'),
+                    subtitle: const Text('Open source map navigation'),
+                    value: 'osm',
+                    groupValue: _mapPreference,
+                    onChanged: (value) => _saveMapPreference(value!),
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('Waze'),
+                    subtitle: const Text('Waze navigation app'),
+                    value: 'waze',
+                    groupValue: _mapPreference,
+                    onChanged: (value) => _saveMapPreference(value!),
                   ),
                 ],
               ),

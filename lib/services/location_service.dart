@@ -43,7 +43,8 @@ class LocationService {
       }
 
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 10),
       );
       
       _currentPosition = position;
@@ -85,8 +86,9 @@ class LocationService {
     
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update every 10 meters
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 5, // Update every 5 meters for better accuracy
+        timeLimit: Duration(seconds: 10),
       ),
     ).listen((Position position) {
       _currentPosition = position;
