@@ -69,6 +69,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
   ];
 
   Timer? _locationCheckTimer;
+  DateTime? _validDwellStartedAt;
+  int _consecutiveValidReadings = 0;
 
   @override
   void initState() {
@@ -94,7 +96,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       double bestAccuracy = double.infinity;
       Position? bestPosition;
       
-      while (attempts < 5 && (position == null || position.accuracy > 15.0)) {
+      while (attempts < 5 && (position == null || !LocationValidationService.isPositionCurrentAndAccurate(position))) {
         final currentPosition = await LocationValidationService.getCurrentPosition();
         if (currentPosition != null) {
           // Keep track of the most accurate position
@@ -103,8 +105,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             bestPosition = currentPosition;
           }
           
-          // If we have a good enough position (accuracy < 15m), use it
-          if (currentPosition.accuracy <= 15.0) {
+          // Only accept current readings with accuracy within the 10 metre limit.
+          if (LocationValidationService.isPositionCurrentAndAccurate(currentPosition)) {
             position = currentPosition;
             break;
           }
@@ -117,10 +119,9 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
         attempts++;
       }
       
-      // Use the best position we found, even if accuracy isn't perfect
-      if (position == null && bestPosition != null) {
+      if (position == null && bestPosition != null &&
+          LocationValidationService.isPositionCurrentAndAccurate(bestPosition)) {
         position = bestPosition;
-        print('⚠️ Using best available position with ${position.accuracy}m accuracy');
       }
       
       if (position == null) {
@@ -140,6 +141,29 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       
       // Validate location
       final validation = await LocationValidationService.validateLocation(position, widget.job);
+
+      if (validation['isValid'] == true) {
+        _consecutiveValidReadings++;
+        _validDwellStartedAt ??= DateTime.now();
+      } else {
+        _consecutiveValidReadings = 0;
+        _validDwellStartedAt = null;
+      }
+
+      final dwellSeconds = _validDwellStartedAt == null
+          ? 0
+          : DateTime.now().difference(_validDwellStartedAt!).inSeconds;
+      final dwellComplete = dwellSeconds >= LocationValidationService.REQUIRED_DWELL_SECONDS;
+      final readingsComplete = _consecutiveValidReadings >= LocationValidationService.REQUIRED_VALID_READINGS;
+      validation['canProceed'] = validation['isValid'] == true && dwellComplete && readingsComplete;
+      validation['isValid'] = validation['isValid'] == true && dwellComplete && readingsComplete;
+      validation['consecutiveValidReadings'] = _consecutiveValidReadings;
+      validation['dwellSeconds'] = dwellSeconds;
+      if (validation['isValid'] == false && validation['error'] == null) {
+        validation['message'] = validation['canProceed'] == false && !readingsComplete
+            ? 'Stay within ${LocationValidationService.REQUIRED_RADIUS_METERS.toInt()}m for ${LocationValidationService.REQUIRED_VALID_READINGS} consecutive readings.'
+            : 'Remain within the required area for ${LocationValidationService.REQUIRED_DWELL_SECONDS} seconds.';
+      }
       setState(() => _locationValidation = validation);
       
     } catch (e) {

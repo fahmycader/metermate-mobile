@@ -3,6 +3,18 @@ import 'package:geocoding/geocoding.dart';
 
 class LocationValidationService {
   static const double REQUIRED_RADIUS_METERS = 10.0;
+  static const double MAXIMUM_GPS_ACCURACY_METERS = 10.0;
+  static const int REQUIRED_DWELL_SECONDS = 15;
+  static const int MAXIMUM_DWELL_SECONDS = 20;
+  static const int MAXIMUM_LOCATION_AGE_SECONDS = 10;
+  static const int REQUIRED_VALID_READINGS = 3;
+  static const LocationAccuracy REQUIRED_LOCATION_ACCURACY = LocationAccuracy.best;
+
+  static bool isPositionCurrentAndAccurate(Position position) {
+    final age = DateTime.now().difference(position.timestamp).inSeconds;
+    return position.accuracy <= MAXIMUM_GPS_ACCURACY_METERS &&
+        age <= MAXIMUM_LOCATION_AGE_SECONDS;
+  }
   
   /// Get job coordinates from multiple possible sources
   static Future<Map<String, dynamic>?> getJobCoordinates(Map<String, dynamic> job) async {
@@ -197,28 +209,29 @@ class LocationValidationService {
       
       // Get position with best accuracy
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best, // Use best accuracy for precise location
+        desiredAccuracy: REQUIRED_LOCATION_ACCURACY,
         timeLimit: const Duration(seconds: 15), // Increased timeout for better accuracy
       );
       
       print('✅ Current position: ${position.latitude}, ${position.longitude} (accuracy: ${position.accuracy}m)');
       
-      // If accuracy is poor (> 20m), try to get a better reading
-      if (position.accuracy > 20.0) {
-        print('⚠️ Position accuracy is ${position.accuracy}m, attempting to get better reading...');
+      // If accuracy is outside the validation limit, try once more for a usable reading.
+      if (position.accuracy > MAXIMUM_GPS_ACCURACY_METERS ||
+          DateTime.now().difference(position.timestamp).inSeconds > MAXIMUM_LOCATION_AGE_SECONDS) {
+        print('⚠️ Position does not meet the ${MAXIMUM_GPS_ACCURACY_METERS}m accuracy or ${MAXIMUM_LOCATION_AGE_SECONDS}s age limit, attempting to get a better reading...');
         // Wait a moment and try again
         await Future.delayed(const Duration(seconds: 2));
         Position betterPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.best,
+          desiredAccuracy: REQUIRED_LOCATION_ACCURACY,
           timeLimit: const Duration(seconds: 15),
         );
-        if (betterPosition.accuracy < position.accuracy) {
+        if (isPositionCurrentAndAccurate(betterPosition)) {
           print('✅ Better position obtained: ${betterPosition.accuracy}m accuracy');
           return betterPosition;
         }
       }
       
-      return position;
+      return isPositionCurrentAndAccurate(position) ? position : null;
       
     } catch (e) {
       print('❌ Error getting current position: $e');
