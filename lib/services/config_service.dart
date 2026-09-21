@@ -20,10 +20,10 @@ class ConfigService {
       _config = {
         'development': {
           'backend': {
-            'ip': '192.168.1.99',
+            'ip': '10.179.152.93',
             'port': 3001,
-            'baseUrl': 'http://192.168.1.99:3001',
-            'mobileDataUrl': 'http://192.168.1.99:3001' // Same as backend IP
+            'baseUrl': 'http://10.179.152.93:3001',
+            'mobileDataUrl': 'http://10.179.152.93:3001' // Same as backend IP
           }
         }
       };
@@ -58,7 +58,7 @@ class ConfigService {
     final isWifi = results.contains(ConnectivityResult.wifi);
 
     // Get URLs from config
-    final wifiUrl = _config?[_environment]?['backend']?['baseUrl'] ?? 'http://192.168.1.99:3001';
+    final wifiUrl = _config?[_environment]?['backend']?['baseUrl'] ?? 'http://10.179.152.93:3001';
     final mobileDataUrl = _config?[_environment]?['backend']?['mobileDataUrl'] ?? wifiUrl;
 
     // For mobile app, always use IP address (not localhost)
@@ -76,7 +76,7 @@ class ConfigService {
   }
 
   static String get backendIp {
-    return _config?[_environment]?['backend']?['ip'] ?? '192.168.1.99';
+    return _config?[_environment]?['backend']?['ip'] ?? '10.179.152.93';
   }
 
   static int get backendPort {
@@ -89,7 +89,7 @@ class ConfigService {
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       return _customBaseUrl!;
     }
-    return _config?[_environment]?['backend']?['baseUrl'] ?? 'http://192.168.1.99:3001';
+    return _config?[_environment]?['backend']?['baseUrl'] ?? 'http://10.179.152.93:3001';
   }
 
   // Async method to get base URL with connectivity check

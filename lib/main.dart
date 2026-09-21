@@ -67,12 +67,39 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'MeterMate',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[100],
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF75D4ED),
+          brightness: Brightness.light,
+          primary: const Color(0xFF10133D),
+          secondary: const Color(0xFF8DCC6F),
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF7F8FB),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFDDE4EE)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFDDE4EE)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF75D4ED), width: 2),
+          ),
+          labelStyle: const TextStyle(color: Color(0xFF5B6380)),
+        ),
         brightness: Brightness.light,
       ),
       darkTheme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF75D4ED),
+          brightness: Brightness.dark,
+          primary: const Color(0xFF75D4ED),
+          secondary: const Color(0xFF8DCC6F),
+        ),
         scaffoldBackgroundColor: Colors.grey[900],
         brightness: Brightness.dark,
         cardColor: Colors.grey[800],

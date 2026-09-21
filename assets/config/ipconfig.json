@@ -1,10 +1,10 @@
 {
   "development": {
     "backend": {
-      "ip": "192.168.1.99",
+      "ip": "10.179.152.93",
       "port": 3001,
-      "baseUrl": "http://192.168.1.99:3001",
-      "mobileDataUrl": "http://192.168.1.99:3001",
+      "baseUrl": "http://10.179.152.93:3001",
+      "mobileDataUrl": "http://10.179.152.93:3001",
       "note": "For mobile data, configure your public IP or domain. You can also set a custom URL in app settings."
     },
     "database": {

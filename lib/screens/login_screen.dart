@@ -160,38 +160,59 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
+      backgroundColor: const Color(0xFF10133D),
       body: Center(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(20.0),
             child: Card(
-              elevation: 8.0,
+              elevation: 18.0,
+              shadowColor: Colors.black.withOpacity(0.35),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(30.0),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'MeterMate',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 32.0,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[800],
+                    Container(
+                      width: 86,
+                      height: 86,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF8DCC6F), Color(0xFF75D4ED), Color(0xFF9A8AC7)],
+                        ),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 70,
+                          height: 70,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                          child: const Center(
+                            child: Text('M', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Color(0xFF10133D))),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: 16.0),
+                    const Text(
+                      'METERMATE',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 26.0, letterSpacing: 2.2, fontWeight: FontWeight.w800, color: Color(0xFF10133D)),
+                    ),
+                    const SizedBox(height: 7.0),
                     Text(
-                      'Sign in to access your account',
+                      'Powering every reading, beautifully.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 16.0,
-                        color: Colors.grey[600],
+                        fontSize: 14.0,
+                        color: Colors.grey[700],
                       ),
                     ),
                     const SizedBox(height: 40.0),
@@ -236,7 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                         child: Text(
                           'Forgot Password?',
-                          style: TextStyle(color: Colors.blue[700]),
+                          style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
@@ -247,9 +268,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: _handleLogin,
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16.0),
-                              backgroundColor: Colors.blue[700],
+                              backgroundColor: const Color(0xFF10133D),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8.0),
+                                borderRadius: BorderRadius.circular(14.0),
                               ),
                             ),
                             child: const Text(
@@ -264,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                       child: Text(
                         'Don\'t have an account? Sign Up',
-                        style: TextStyle(color: Colors.blue[700]),
+                        style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
